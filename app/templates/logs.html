@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+
+{% block title %}System Logs - OpenRouter Middleware Admin{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/logs.css">
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="bi bi-journal-text"></i> System Logs</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="refreshLogs()">
+                <i class="bi bi-arrow-clockwise"></i> Refresh
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="toggleAutoRefresh()">
+                <i class="bi bi-play-circle" id="autoRefreshIcon"></i> Auto Refresh
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#exportModal">
+                <i class="bi bi-download"></i> Export
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#configModal">
+                <i class="bi bi-gear"></i> Configure
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Statistics Row -->
+<div class="row mb-4" id="logStats">
+    <div class="col-md-3">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title">Total Logs</h6>
+                        <h4 id="totalLogs">-</h4>
+                        <small>Last 7 days</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-file-text" style="font-size: 1.5rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-danger">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title">Errors</h6>
+                        <h4 id="errorLogs">-</h4>
+                        <small id="errorRate">-% error rate</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-exclamation-triangle" style="font-size: 1.5rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title">Warnings</h6>
+                        <h4 id="warningLogs">-</h4>
+                        <small>Needs attention</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-exclamation-circle" style="font-size: 1.5rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title">Info/Debug</h6>
+                        <h4 id="infoLogs">-</h4>
+                        <small>Normal operations</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-info-circle" style="font-size: 1.5rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <button class="btn btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#filtersCollapse" aria-expanded="false">
+                <i class="bi bi-funnel"></i> Filters & Search
+            </button>
+        </h5>
+    </div>
+    <div id="filtersCollapse" class="collapse">
+        <div class="card-body">
+            <form id="logFiltersForm">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label for="levelFilter" class="form-label">Log Level</label>
+                        <select class="form-select" id="levelFilter" name="level">
+                            <option value="">All Levels</option>
+                            <option value="DEBUG">DEBUG</option>
+                            <option value="INFO">INFO</option>
+                            <option value="WARNING">WARNING</option>
+                            <option value="ERROR">ERROR</option>
+                            <option value="CRITICAL">CRITICAL</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="moduleFilter" class="form-label">Module</label>
+                        <select class="form-select" id="moduleFilter" name="module">
+                            <option value="">All Modules</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="startTime" class="form-label">Start Time</label>
+                        <input type="datetime-local" class="form-control" id="startTime" name="start_time">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="endTime" class="form-label">End Time</label>
+                        <input type="datetime-local" class="form-control" id="endTime" name="end_time">
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-4">
+                        <label for="searchQuery" class="form-label">Search Message</label>
+                        <input type="text" class="form-control" id="searchQuery" name="search_query" placeholder="Search in log messages...">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="requestIdFilter" class="form-label">Request ID</label>
+                        <input type="text" class="form-control" id="requestIdFilter" name="request_id" placeholder="Request ID...">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="userIdFilter" class="form-label">User ID</label>
+                        <input type="text" class="form-control" id="userIdFilter" name="user_id" placeholder="User ID...">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary me-2">
+                            <i class="bi bi-search"></i> Filter
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="clearFilters()">
+                            <i class="bi bi-x-circle"></i> Clear
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Logs Table -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Log Entries</h5>
+        <div>
+            <button class="btn btn-sm btn-outline-danger" onclick="bulkDeleteSelected()" id="bulkDeleteBtn" style="display: none;">
+                <i class="bi bi-trash"></i> Delete Selected
+            </button>
+            <span class="badge bg-secondary" id="logCount">0 logs</span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="logsTable">
+                <thead class="table-light">
+                    <tr>
+                        <th width="40">
+                            <input type="checkbox" class="form-check-input" id="selectAllLogs" onchange="toggleSelectAll()">
+                        </th>
+                        <th width="150">Timestamp</th>
+                        <th width="80">Level</th>
+                        <th width="150">Module</th>
+                        <th>Message</th>
+                        <th width="100">Request ID</th>
+                        <th width="80">Duration</th>
+                        <th width="100">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="logsTableBody">
+                    <tr>
+                        <td colspan="8" class="text-center py-4">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <div class="mt-2">Loading logs...</div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Pagination -->
+        <nav aria-label="Logs pagination" class="p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <select class="form-select form-select-sm" id="pageSizeSelect" onchange="changePageSize()" style="width: auto;">
+                        <option value="25">25 per page</option>
+                        <option value="50" selected>50 per page</option>
+                        <option value="100">100 per page</option>
+                        <option value="200">200 per page</option>
+                    </select>
+                </div>
+                <ul class="pagination pagination-sm mb-0" id="pagination">
+                    <!-- Pagination will be generated by JavaScript -->
+                </ul>
+            </div>
+        </nav>
+    </div>
+</div>
+
+<!-- Log Detail Modal -->
+<div class="modal fade" id="logDetailModal" tabindex="-1" aria-labelledby="logDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="logDetailModalLabel">Log Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="logDetailContent">
+                <!-- Content will be loaded dynamically -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" onclick="deleteLogFromModal()">
+                    <i class="bi bi-trash"></i> Delete Log
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Export Modal -->
+<div class="modal fade" id="exportModal" tabindex="-1" aria-labelledby="exportModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="exportModalLabel">Export Logs</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="exportForm">
+                    <div class="mb-3">
+                        <label for="exportFormat" class="form-label">Export Format</label>
+                        <select class="form-select" id="exportFormat" name="format">
+                            <option value="json">JSON</option>
+                            <option value="csv">CSV</option>
+                            <option value="txt">Text</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="maxRecords" class="form-label">Maximum Records</label>
+                        <select class="form-select" id="maxRecords" name="max_records">
+                            <option value="1000">1,000 records</option>
+                            <option value="5000">5,000 records</option>
+                            <option value="10000" selected>10,000 records</option>
+                            <option value="50000">50,000 records</option>
+                        </select>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="includeMetadata" name="include_metadata" checked>
+                        <label class="form-check-label" for="includeMetadata">
+                            Include metadata (exception traces, extra data)
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="exportLogs()">
+                    <i class="bi bi-download"></i> Download Export
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Configuration Modal -->
+<div class="modal fade" id="configModal" tabindex="-1" aria-labelledby="configModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="configModalLabel">Log Configuration</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="configForm">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="globalLevel" class="form-label">Global Log Level</label>
+                                <select class="form-select" id="globalLevel" name="global_level">
+                                    <option value="DEBUG">DEBUG</option>
+                                    <option value="INFO">INFO</option>
+                                    <option value="WARNING">WARNING</option>
+                                    <option value="ERROR">ERROR</option>
+                                    <option value="CRITICAL">CRITICAL</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="retentionDays" class="form-label">Retention (Days)</label>
+                                <input type="number" class="form-control" id="retentionDays" name="retention_days" min="1" max="365">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="enableConsole" name="enable_console">
+                                <label class="form-check-label" for="enableConsole">
+                                    Enable Console Logging
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="enableRedis" name="enable_redis">
+                                <label class="form-check-label" for="enableRedis">
+                                    Enable Redis Persistence
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveConfiguration()">
+                    <i class="bi bi-check"></i> Save Configuration
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/js/logs.js"></script>
+{% endblock %}

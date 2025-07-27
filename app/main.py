@@ -11,6 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.core.config import get_settings
 from app.core.redis import lifespan_redis, redis_manager
+from app.core.logging import StructuredLogger, setup_structured_logging
 from app.middleware.auth import (
     ClientAuthMiddleware,
     SecurityHeadersMiddleware,
@@ -21,16 +22,13 @@ from app.middleware.admin_auth import (
     CSRFProtectionMiddleware,
     SessionTimeoutMiddleware
 )
-from app.api import auth, admin, proxy
+from app.api import auth, admin, proxy, logs
 from app.services.rotation import get_rotation_manager
 from app.services.key_manager import get_key_manager
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Initialize structured logging
+setup_structured_logging()
+logger = StructuredLogger(__name__)
 
 # Get settings
 settings = get_settings()
@@ -42,22 +40,24 @@ async def lifespan(app: FastAPI):
     try:
         # Initialize Redis connection
         async with lifespan_redis():
-            logger.info("Redis connection initialized")
+            await logger.info("Redis connection initialized")
             
             # Initialize rotation manager background tasks
             key_manager = await get_key_manager()
             rotation_manager = get_rotation_manager(key_manager)
             rotation_manager.start_background_tasks()
-            logger.info("Key rotation background tasks started")
+            await logger.info("Key rotation background tasks started")
             
             yield
             
             # Cleanup on shutdown
             await rotation_manager.stop_background_tasks()
-            logger.info("Application shutdown completed")
+            await logger.info("Application shutdown completed")
             
     except Exception as e:
-        logger.error(f"Error during application lifespan: {e}")
+        await logger.error("Error during application lifespan", 
+                          exception_type=type(e).__name__,
+                          exception_traceback=str(e))
         raise
 
 
@@ -135,6 +135,12 @@ app.include_router(
     tags=["admin"]
 )
 
+# Logs API routes
+app.include_router(
+    logs.router,
+    tags=["logs"]
+)
+
 # Proxy routes (main functionality)
 app.include_router(
     proxy.router,
@@ -145,7 +151,10 @@ app.include_router(
 try:
     app.mount("/static", StaticFiles(directory="static"), name="static")
 except Exception as e:
-    logger.warning(f"Could not mount static files: {e}")
+    # Use standard logging here since we're not in an async context
+    import logging
+    std_logger = logging.getLogger(__name__)
+    std_logger.warning(f"Could not mount static files: {e}")
 
 # Root endpoints
 
@@ -187,7 +196,9 @@ async def health_check():
         }
         
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        await logger.error("Health check failed", 
+                          exception_type=type(e).__name__,
+                          exception_traceback=str(e))
         return {
             "status": "unhealthy",
             "error": str(e),
@@ -212,7 +223,9 @@ async def readiness_check():
         }
         
     except Exception as e:
-        logger.error(f"Readiness check failed: {e}")
+        await logger.error("Readiness check failed", 
+                          exception_type=type(e).__name__,
+                          exception_traceback=str(e))
         from fastapi import HTTPException
         raise HTTPException(status_code=503, detail="Service not ready")
 
@@ -252,7 +265,9 @@ async def not_found_handler(request: Request, exc):
 @app.exception_handler(500)
 async def internal_error_handler(request: Request, exc):
     """Custom 500 handler."""
-    logger.error(f"Internal server error: {exc}")
+    await logger.error("Internal server error", 
+                      exception_type=type(exc).__name__,
+                      exception_traceback=str(exc))
     
     if request.url.path.startswith("/admin"):
         return templates.TemplateResponse(
@@ -275,15 +290,18 @@ async def internal_error_handler(request: Request, exc):
 @app.on_event("startup")
 async def startup_event():
     """Additional startup tasks."""
-    logger.info(f"Starting {settings.app_name} v{settings.app_version}")
-    logger.info(f"Debug mode: {settings.debug}")
-    logger.info(f"OpenRouter base URL: {settings.openrouter_base_url}")
+    await logger.info("Application starting", 
+                     app_name=settings.app_name, 
+                     version=settings.app_version)
+    await logger.info("Application configuration loaded", 
+                     debug_mode=settings.debug,
+                     openrouter_base_url=settings.openrouter_base_url)
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Additional shutdown tasks."""
-    logger.info(f"Shutting down {settings.app_name}")
+    await logger.info("Application shutting down", app_name=settings.app_name)
 
 
 # Development server

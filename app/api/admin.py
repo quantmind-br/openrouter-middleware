@@ -421,6 +421,31 @@ async def reactivate_client_key(
         raise HTTPException(status_code=500, detail="Failed to reactivate client key")
 
 
+# Logs Management
+
+@router.get("/logs", response_class=HTMLResponse)
+async def logs_dashboard(
+    request: Request,
+    admin_session: AdminSession = Depends(require_admin_auth)
+):
+    """System logs dashboard page."""
+    try:
+        if not templates:
+            raise HTTPException(status_code=500, detail="Templates not configured")
+        
+        context = {
+            "request": request,
+            "admin_session": admin_session,
+            "page_title": "System Logs"
+        }
+        
+        return templates.TemplateResponse("logs.html", context)
+        
+    except Exception as e:
+        logger.error(f"Error loading logs dashboard: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load logs dashboard")
+
+
 # System Management
 
 @router.get("/api/dashboard-data")
