@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block title %}Client Keys - Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Client Keys</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#createKeyModal">
+                <i class="bi bi-plus"></i> Create Key
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Keys Table -->
+<div class="table-responsive">
+    <table class="table table-striped table-sm">
+        <thead>
+            <tr>
+                <th>User ID</th>
+                <th>Status</th>
+                <th>Usage Count</th>
+                <th>Rate Limit</th>
+                <th>Permissions</th>
+                <th>Created</th>
+                <th>Last Used</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for key in client_keys %}
+            <tr>
+                <td>{{ key.user_id }}</td>
+                <td>
+                    <span class="badge bg-{{ 'success' if key.is_active else 'secondary' }}">
+                        {{ 'Active' if key.is_active else 'Inactive' }}
+                    </span>
+                </td>
+                <td>{{ key.usage_count }}</td>
+                <td>{{ key.rate_limit }}/hour</td>
+                <td>
+                    {% if key.permissions %}
+                        {% for perm in key.permissions %}
+                            <span class="badge bg-info">{{ perm }}</span>
+                        {% endfor %}
+                    {% else %}
+                        <span class="text-muted">All</span>
+                    {% endif %}
+                </td>
+                <td>{{ key.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ key.last_used.strftime('%Y-%m-%d %H:%M') if key.last_used else 'Never' }}</td>
+                <td>
+                    <div class="btn-group" role="group">
+                        {% if key.is_active %}
+                            <button class="btn btn-sm btn-outline-warning" onclick="deactivateKey('{{ key.key_hash }}', '{{ key.user_id }}')">
+                                <i class="bi bi-pause"></i> Deactivate
+                            </button>
+                        {% else %}
+                            <button class="btn btn-sm btn-outline-success" onclick="reactivateKey('{{ key.key_hash }}', '{{ key.user_id }}')">
+                                <i class="bi bi-play"></i> Reactivate
+                            </button>
+                        {% endif %}
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteKey('{{ key.key_hash }}', '{{ key.user_id }}')">
+                            <i class="bi bi-trash"></i> Delete
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Create Key Modal -->
+<div class="modal fade" id="createKeyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Create Client Key</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="createKeyForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="userId" class="form-label">User ID</label>
+                        <input type="text" class="form-control" id="userId" name="user_id" required>
+                        <div class="form-text">Unique identifier for the client</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="rateLimit" class="form-label">Rate Limit (per hour)</label>
+                        <input type="number" class="form-control" id="rateLimit" name="rate_limit" value="1000" min="1">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Permissions</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" value="chat.completions" id="permChat">
+                            <label class="form-check-label" for="permChat">Chat Completions</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" value="models.list" id="permModels">
+                            <label class="form-check-label" for="permModels">List Models</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" value="embeddings" id="permEmbeddings">
+                            <label class="form-check-label" for="permEmbeddings">Embeddings</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Key</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- API Key Display Modal -->
+<div class="modal fade" id="apiKeyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">New API Key Created</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <strong>Important:</strong> Save this API key securely. It will not be shown again.
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">API Key</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="generatedApiKey" readonly>
+                        <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard()">
+                            <i class="bi bi-clipboard"></i> Copy
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">I've Saved It</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Key Deletion</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger">
+                    <strong>Warning:</strong> This action cannot be undone. The API key will be permanently deleted and removed from all systems.
+                </div>
+                <p>Are you sure you want to permanently delete the API key for user <strong id="deleteUserId"></strong>?</p>
+                <input type="hidden" id="deleteKeyHash">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="confirmDelete()">
+                    <i class="bi bi-trash"></i> Delete Permanently
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.getElementById('createKeyForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const permissions = [];
+    
+    // Collect selected permissions
+    document.querySelectorAll('input[type="checkbox"]:checked').forEach(checkbox => {
+        permissions.push(checkbox.value);
+    });
+    
+    const data = {
+        user_id: formData.get('user_id'),
+        rate_limit: parseInt(formData.get('rate_limit')),
+        permissions: permissions
+    };
+    
+    try {
+        const response = await fetch('/admin/api/client-keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            
+            // Hide create modal
+            bootstrap.Modal.getInstance(document.getElementById('createKeyModal')).hide();
+            
+            // Show API key
+            document.getElementById('generatedApiKey').value = result.api_key;
+            new bootstrap.Modal(document.getElementById('apiKeyModal')).show();
+            
+            // Reload page after modal is closed
+            document.getElementById('apiKeyModal').addEventListener('hidden.bs.modal', function() {
+                window.location.reload();
+            }, { once: true });
+            
+        } else {
+            const error = await response.json();
+            alert('Failed to create key: ' + error.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+});
+
+async function deactivateKey(keyHash, userId) {
+    if (!confirm(`Are you sure you want to deactivate the key for user "${userId}"?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/admin/api/client-keys/${keyHash}/deactivate`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            alert('Key deactivated successfully!');
+            window.location.reload(); // Refresh the page to show updated status
+        } else {
+            const error = await response.json();
+            alert('Failed to deactivate key: ' + error.detail);
+        }
+        
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function reactivateKey(keyHash, userId) {
+    if (!confirm(`Are you sure you want to reactivate the key for user "${userId}"?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/admin/api/client-keys/${keyHash}/reactivate`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            alert('Key reactivated successfully!');
+            window.location.reload(); // Refresh the page to show updated status
+        } else {
+            const error = await response.json();
+            alert('Failed to reactivate key: ' + error.detail);
+        }
+        
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function deleteKey(keyHash, userId) {
+    // Show confirmation modal instead of simple confirm
+    showDeleteConfirmModal(keyHash, userId);
+}
+
+async function confirmDeleteKey(keyHash, userId) {
+    try {
+        const response = await fetch(`/admin/api/client-keys/${keyHash}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            alert('Key deleted permanently!');
+            window.location.reload(); // Refresh the page to show updated status
+        } else {
+            const error = await response.json();
+            alert('Failed to delete key: ' + error.detail);
+        }
+        
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+function showDeleteConfirmModal(keyHash, userId) {
+    // Set the modal data
+    document.getElementById('deleteKeyHash').value = keyHash;
+    document.getElementById('deleteUserId').textContent = userId;
+    
+    // Show the modal
+    const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+    modal.show();
+}
+
+function confirmDelete() {
+    // Get the data from the modal
+    const keyHash = document.getElementById('deleteKeyHash').value;
+    const userId = document.getElementById('deleteUserId').textContent;
+    
+    // Hide the modal
+    const modal = bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal'));
+    modal.hide();
+    
+    // Perform the actual deletion
+    confirmDeleteKey(keyHash, userId);
+}
+
+function copyToClipboard() {
+    const apiKeyInput = document.getElementById('generatedApiKey');
+    apiKeyInput.select();
+    apiKeyInput.setSelectionRange(0, 99999);
+    navigator.clipboard.writeText(apiKeyInput.value);
+    
+    // Show feedback
+    const button = event.target.closest('button');
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="bi bi-check"></i> Copied!';
+    setTimeout(() => {
+        button.innerHTML = originalText;
+    }, 2000);
+}
+</script>
+{% endblock %}

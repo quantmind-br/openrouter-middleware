@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - OpenRouter Middleware Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Dashboard</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="refreshData()">
+                <i class="bi bi-arrow-clockwise"></i> Refresh
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">Client Keys</h5>
+                        <h3>{{ dashboard_data.total_client_keys }}</h3>
+                        <small>{{ dashboard_data.active_client_keys }} active</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-people" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">OpenRouter Keys</h5>
+                        <h3>{{ dashboard_data.total_openrouter_keys }}</h3>
+                        <small>{{ dashboard_data.healthy_openrouter_keys }} healthy</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-key" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">Requests Today</h5>
+                        <h3>{{ dashboard_data.total_requests_today }}</h3>
+                        <small>{{ dashboard_data.successful_requests_today }} successful</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-graph-up" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card text-white {% if dashboard_data.redis_status == 'healthy' %}bg-success{% else %}bg-danger{% endif %}">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">System Status</h5>
+                        <h3>{{ dashboard_data.redis_status|title }}</h3>
+                        <small>Redis connection</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-hdd" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Key Health Overview -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-pie-chart"></i> Client Key Usage
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="progress mb-2">
+                    <div class="progress-bar" role="progressbar" 
+                         style="width: {{ dashboard_data.client_key_usage_rate }}%"
+                         aria-valuenow="{{ dashboard_data.client_key_usage_rate }}" 
+                         aria-valuemin="0" aria-valuemax="100">
+                        {{ "%.1f"|format(dashboard_data.client_key_usage_rate) }}%
+                    </div>
+                </div>
+                <small class="text-muted">{{ dashboard_data.active_client_keys }} of {{ dashboard_data.total_client_keys }} keys are active</small>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-shield-check"></i> OpenRouter Key Health
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="progress mb-2">
+                    <div class="progress-bar bg-success" role="progressbar" 
+                         style="width: {{ dashboard_data.openrouter_key_health_rate }}%"
+                         aria-valuenow="{{ dashboard_data.openrouter_key_health_rate }}" 
+                         aria-valuemin="0" aria-valuemax="100">
+                        {{ "%.1f"|format(dashboard_data.openrouter_key_health_rate) }}%
+                    </div>
+                </div>
+                <small class="text-muted">{{ dashboard_data.healthy_openrouter_keys }} of {{ dashboard_data.total_openrouter_keys }} keys are healthy</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-lightning"></i> Quick Actions
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <a href="/admin/openrouter-keys" class="btn btn-outline-primary w-100 mb-2">
+                            <i class="bi bi-plus-circle"></i><br>
+                            Add OpenRouter Key
+                        </a>
+                    </div>
+                    <div class="col-md-3">
+                        <a href="/admin/client-keys" class="btn btn-outline-success w-100 mb-2">
+                            <i class="bi bi-person-plus"></i><br>
+                            Create Client Key
+                        </a>
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-outline-info w-100 mb-2" onclick="viewSystemStatus()">
+                            <i class="bi bi-info-circle"></i><br>
+                            System Status
+                        </button>
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-outline-warning w-100 mb-2" onclick="performCleanup()">
+                            <i class="bi bi-trash"></i><br>
+                            System Cleanup
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function refreshData() {
+    window.location.reload();
+}
+
+async function viewSystemStatus() {
+    try {
+        const response = await fetch('/admin/api/system-status');
+        const data = await response.json();
+        
+        let statusHtml = '<h6>System Status</h6>';
+        statusHtml += `<p><strong>Overall:</strong> <span class="badge bg-${data.system.status === 'healthy' ? 'success' : 'warning'}">${data.system.status}</span></p>`;
+        statusHtml += `<p><strong>Redis:</strong> <span class="badge bg-${data.redis.status === 'healthy' ? 'success' : 'danger'}">${data.redis.status}</span></p>`;
+        statusHtml += `<p><strong>OpenRouter Keys:</strong> ${data.keys.openrouter.healthy}/${data.keys.openrouter.total} healthy</p>`;
+        statusHtml += `<p><strong>Client Keys:</strong> ${data.keys.client.active}/${data.keys.client.total} active</p>`;
+        
+        // Show in modal or alert
+        alert(statusHtml.replace(/<[^>]*>/g, ' '));
+        
+    } catch (error) {
+        alert('Failed to fetch system status: ' + error.message);
+    }
+}
+
+async function performCleanup() {
+    if (!confirm('Perform system cleanup? This will clean up expired rate limits and reset unhealthy keys.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/admin/api/system/cleanup', { method: 'POST' });
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('System cleanup completed successfully!');
+            refreshData();
+        } else {
+            alert('Cleanup failed: ' + data.message);
+        }
+        
+    } catch (error) {
+        alert('Failed to perform cleanup: ' + error.message);
+    }
+}
+</script>
+{% endblock %}

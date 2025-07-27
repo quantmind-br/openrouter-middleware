@@ -1,0 +1,163 @@
+# Development and production Docker Compose configuration
+
+services:
+  # FastAPI application
+  fastapi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      # Application settings
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      
+      # Security settings
+      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      
+      # Redis settings
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      
+      # OpenRouter settings
+      - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      
+      # Rate limiting
+      - DEFAULT_RATE_LIMIT=${DEFAULT_RATE_LIMIT:-1000}
+      
+      # CORS settings
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8080}
+    
+    depends_on:
+      redis:
+        condition: service_healthy
+    
+    volumes:
+      # Development: mount source code for live reloading
+      - ./app:/app/app:${MOUNT_SOURCE:-ro}
+      - ./static:/app/static:${MOUNT_SOURCE:-ro}
+      # Logs and data persistence
+      - fastapi_logs:/app/logs
+      - fastapi_data:/app/data
+    
+    
+    restart: unless-stopped
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Redis database
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_EXTERNAL_PORT:-6379}:6379"
+    
+    command: >
+      redis-server /usr/local/etc/redis/redis.conf
+      --requirepass ${REDIS_PASSWORD}
+      --appendonly yes
+      --maxmemory ${REDIS_MAX_MEMORY:-256mb}
+      --maxmemory-policy allkeys-lru
+    
+    volumes:
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis_data:/data
+    
+    
+    restart: unless-stopped
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+        reservations:
+          memory: 128M
+          cpus: '0.1'
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Optional: Redis Insight for Redis management (development only)
+  redis-insight:
+    image: redislabs/redisinsight:latest
+    ports:
+      - "8001:8001"
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - redis_insight_data:/db
+    restart: unless-stopped
+    profiles:
+      - development  # Only starts with --profile development
+
+  # Optional: Nginx reverse proxy (production)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro  # SSL certificates
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - fastapi
+    restart: unless-stopped
+    profiles:
+      - production  # Only starts with --profile production
+
+# Named volumes for data persistence
+volumes:
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_DIR:-./data}/redis
+  
+  redis_insight_data:
+    driver: local
+  
+  fastapi_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_DIR:-./data}/logs
+  
+  fastapi_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_DIR:-./data}/app
+  
+  nginx_logs:
+    driver: local
+
